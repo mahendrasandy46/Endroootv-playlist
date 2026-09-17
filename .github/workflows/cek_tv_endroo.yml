@@ -18,8 +18,8 @@ jobs:
 
       - name: Filter URL Aktif
         run: |
-          INPUT="playlist2.m3u"
-          ACTIVE="tv_endrooo_aktif.m3u"
+          INPUT="playlist3.m3u"
+          ACTIVE="playlist3_aktif.m3u"
 
           # Reset file aktif
           rm -f "$ACTIVE"
@@ -49,4 +49,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Auto-sync: Membersihkan tv_endroo.m3u dari link mati"
-          file_pattern: 'tv_endrooo_aktif.m3u'
+          file_pattern: 'playlist3_aktif.m3u'
