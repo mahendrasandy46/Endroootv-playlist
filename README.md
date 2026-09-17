@@ -1,4 +1,4 @@
 Playlist gretongan
-Silahkan gunakan dengan bijak
+silahkan gunakan dengan bijak dan hanya untuk kepentingan pribadi
 
 TIDAK UNTUK DIPERJUALBELIKAN!!!
