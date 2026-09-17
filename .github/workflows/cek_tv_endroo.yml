@@ -2,10 +2,8 @@ name: Auto-Check Playlist tv_endroo
 
 on:
   schedule:
-    # Terjadwal berjalan setiap pukul 07:00 WIB otomatis
     - cron: '0 0 * * *'
   workflow_dispatch:
-    # Memunculkan tombol manual untuk menjalankan proses
 
 permissions:
   contents: write
@@ -20,7 +18,6 @@ jobs:
 
       - name: Filter URL Aktif
         run: |
-          # Nama file sumber dan file tujuan
           INPUT="tv_endrooo.m3u"
           ACTIVE="tv_endrooo_aktif.m3u"
 
@@ -32,9 +29,10 @@ jobs:
           
           # Proses baca per baris
           tr -d '\r' < "$INPUT" | while IFS= read -r line || [ -n "$line" ]; do
-            if [[ $line == #EXTINF* ]]; then
+            # PERBAIKAN: Menambahkan tanda kutip pada "$line" dan "#EXTINF"*
+            if [[ "$line" == "#EXTINF"* ]]; then
               CURRENT_INFO="$line"
-            elif [[ $line == http* ]]; then
+            elif [[ "$line" == "http"* ]]; then
               # Cek URL dengan curl (timeout 5 detik)
               if curl -s -f -I -m 5 "$line" > /dev/null; then
                 echo "$CURRENT_INFO" >> "$ACTIVE"
@@ -47,5 +45,5 @@ jobs:
       - name: Commit File Baru ke GitHub
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-sync: Membersihkan tv_endrooo.m3u dari link mati"
+          commit_message: "Auto-sync: Membersihkan tv_endroo.m3u dari link mati"
           file_pattern: 'tv_endrooo_aktif.m3u'
