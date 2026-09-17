@@ -33,8 +33,11 @@ jobs:
             if [[ "$line" == "#EXTINF"* ]]; then
               CURRENT_INFO="$line"
             elif [[ "$line" == "http"* ]]; then
-              # Cek URL dengan curl (timeout 5 detik)
-              if curl -s -f -I -m 5 "$line" > /dev/null; then
+              # Menggunakan User-Agent VLC dan meminta sedikit byte data (-r 0-1000) agar tidak hang pada live stream
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -r 0-1000 -A "VLC/3.0.18" -m 5 "$line")
+              
+              # 200 = OK, 206 = Partial Content (karena kita pakai -r), 302 = Redirect
+              if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "206" || "$HTTP_CODE" == "302" ]]; then
                 echo "$CURRENT_INFO" >> "$ACTIVE"
                 echo "$line" >> "$ACTIVE"
               fi
