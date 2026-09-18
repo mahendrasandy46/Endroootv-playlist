@@ -18,7 +18,7 @@ jobs:
 
       - name: Filter URL Aktif
         run: |
-          INPUT="playlist2.m3u"
+          INPUT="xx.m3u"
           ACTIVE="tv_endrooo_aktif.m3u"
 
           # Reset file aktif
