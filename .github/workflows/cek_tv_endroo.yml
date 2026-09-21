@@ -1,9 +1,8 @@
-name: Auto-Check Playlist tv_endrooo (Fast Python)
+name: Auto-Check Playlist tv_endrooo (Manual)
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
   workflow_dispatch:
+    # Script sekarang HANYA berjalan jika tombol "Run workflow" ditekan manual
 
 permissions:
   contents: write
@@ -35,20 +34,21 @@ jobs:
           OUTPUT_FILE = "tv_endrooo_aktif.m3u"
 
           def check_channel(block):
-              # Ambil baris terakhir sebagai URL, sisanya sebagai header informasi
               url = block[-1]
               info_lines = "\n".join(block[:-1])
-              headers = {"User-Agent": "VLC/3.0.18"}
+              
+              # Tambahan Accept header agar server tidak menolak koneksi
+              headers = {
+                  "User-Agent": "VLC/3.0.18",
+                  "Accept": "*/*" 
+              }
 
-              # 1. Ekstrak User-Agent dari teks m3u
               ua_match = re.search(r'http-user-agent=([^\n\r]+)', info_lines, re.IGNORECASE) or re.search(r'user-agent=([^&\n\r]+)', info_lines, re.IGNORECASE)
               if ua_match: headers["User-Agent"] = ua_match.group(1).strip()
 
-              # 2. Ekstrak Referer dari teks m3u
               ref_match = re.search(r'http-referrer=([^\n\r]+)', info_lines, re.IGNORECASE) or re.search(r'referer=([^&\n\r]+)', info_lines, re.IGNORECASE)
               if ref_match: headers["Referer"] = ref_match.group(1).strip()
 
-              # 3. Ekstrak Parameter di belakang URL (contoh: url.mpd|User-Agent=Chrome)
               if "|" in url:
                   parts = url.split("|")
                   url = parts[0]
@@ -59,15 +59,13 @@ jobs:
                       ref_m = re.search(r'referer=([^&]+)', parts[1], re.IGNORECASE)
                       if ref_m: headers["Referer"] = ref_m.group(1).strip()
 
-              # Minta 100 byte pertama saja agar streaming tidak didownload
-              headers["Range"] = "bytes=0-100"
+              # PARAMETER RANGE DIHAPUS: Agar server RCTI+/GTV tidak merespons dengan 400 Bad Request.
 
               try:
                   res = requests.get(url, headers=headers, timeout=5, stream=True)
                   status = res.status_code
                   res.close()
                   
-                  # Kode 200 (OK), 206 (Partial), 302 (Redirect), 401/403 (DRM)
                   if status in [200, 206, 302, 401, 403]:
                       return True, block
               except:
@@ -75,7 +73,6 @@ jobs:
               
               return False, block
 
-          # --- PROSES UTAMA ---
           try:
               with open(INPUT_FILE, "r", encoding="utf-8") as f:
                   lines = [line.strip() for line in f if line.strip()]
@@ -86,7 +83,6 @@ jobs:
           blocks = []
           current_block = []
           
-          # Membaca file dan mengelompokkan blok channel (EXTINF + KODIPROP + URL)
           for line in lines:
               if line.startswith("#EXTINF"):
                   current_block = [line]
@@ -101,14 +97,12 @@ jobs:
           print(f"Memulai pengecekan {len(blocks)} channel secara paralel...")
 
           active_blocks = []
-          # Multithreading dengan 20 pekerja. Map digunakan agar urutan channel m3u tidak acak.
           with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
               results = executor.map(check_channel, blocks)
               for is_active, blk in results:
                   if is_active:
                       active_blocks.append("\n".join(blk))
 
-          # Menulis file baru
           with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
               f.write("#EXTM3U\n")
               f.write("\n".join(active_blocks) + "\n")
@@ -116,11 +110,10 @@ jobs:
           print(f"Selesai! File {OUTPUT_FILE} telah diperbarui.")
           EOF
           
-          # Eksekusi file Python yang baru dibuat
           python checker.py
 
       - name: Commit File Baru ke GitHub
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-sync: Membersihkan tv_endrooo.m3u dengan Python"
+          commit_message: "Auto-sync: Pengecekan manual & perbaikan filter RCTI+"
           file_pattern: 'tv_endrooo_aktif.m3u'
