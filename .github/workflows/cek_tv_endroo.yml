@@ -1,4 +1,4 @@
-name: Auto-Check Playlist tv_endroo
+name: Auto-Check Playlist tv_endrooo (Fast Python)
 
 on:
   schedule:
@@ -16,37 +16,111 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Filter URL Aktif
-        run: |
-          INPUT="xx.m3u"
-          ACTIVE="tv_endrooo_aktif.m3u"
-
-          # Reset file aktif
-          rm -f "$ACTIVE"
-          echo "#EXTM3U" > "$ACTIVE"
-
-          CURRENT_INFO=""
+      - name: Siapkan Environment Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
           
-          # Proses baca per baris
-          tr -d '\r' < "$INPUT" | while IFS= read -r line || [ -n "$line" ]; do
-            if [[ "$line" == "#EXTINF"* ]]; then
-              CURRENT_INFO="$line"
-            elif [[ "$line" == "http"* ]]; then
+      - name: Install modul requests
+        run: pip install requests
+
+      - name: Filter URL Aktif Dinamis (Multithreading)
+        run: |
+          cat << 'EOF' > checker.py
+          import requests
+          import concurrent.futures
+          import re
+
+          INPUT_FILE = "tv_endrooo.m3u"
+          OUTPUT_FILE = "tv_endrooo_aktif.m3u"
+
+          def check_channel(block):
+              # Ambil baris terakhir sebagai URL, sisanya sebagai header informasi
+              url = block[-1]
+              info_lines = "\n".join(block[:-1])
+              headers = {"User-Agent": "VLC/3.0.18"}
+
+              # 1. Ekstrak User-Agent dari teks m3u
+              ua_match = re.search(r'http-user-agent=([^\n\r]+)', info_lines, re.IGNORECASE) or re.search(r'user-agent=([^&\n\r]+)', info_lines, re.IGNORECASE)
+              if ua_match: headers["User-Agent"] = ua_match.group(1).strip()
+
+              # 2. Ekstrak Referer dari teks m3u
+              ref_match = re.search(r'http-referrer=([^\n\r]+)', info_lines, re.IGNORECASE) or re.search(r'referer=([^&\n\r]+)', info_lines, re.IGNORECASE)
+              if ref_match: headers["Referer"] = ref_match.group(1).strip()
+
+              # 3. Ekstrak Parameter di belakang URL (contoh: url.mpd|User-Agent=Chrome)
+              if "|" in url:
+                  parts = url.split("|")
+                  url = parts[0]
+                  if "user-agent=" in parts[1].lower():
+                      ua_m = re.search(r'user-agent=([^&]+)', parts[1], re.IGNORECASE)
+                      if ua_m: headers["User-Agent"] = ua_m.group(1).strip()
+                  if "referer=" in parts[1].lower():
+                      ref_m = re.search(r'referer=([^&]+)', parts[1], re.IGNORECASE)
+                      if ref_m: headers["Referer"] = ref_m.group(1).strip()
+
+              # Minta 100 byte pertama saja agar streaming tidak didownload
+              headers["Range"] = "bytes=0-100"
+
+              try:
+                  res = requests.get(url, headers=headers, timeout=5, stream=True)
+                  status = res.status_code
+                  res.close()
+                  
+                  # Kode 200 (OK), 206 (Partial), 302 (Redirect), 401/403 (DRM)
+                  if status in [200, 206, 302, 401, 403]:
+                      return True, block
+              except:
+                  pass
               
-              # Tambahan '|| echo "000"' agar script tidak crash saat URL mati total
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -r 0-1000 -A "VLC/3.0.18" -m 5 "$line" || echo "000")
-              
-              # 200 = OK, 206 = Partial Content, 302 = Redirect
-              if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "206" || "$HTTP_CODE" == "302" ]]; then
-                echo "$CURRENT_INFO" >> "$ACTIVE"
-                echo "$line" >> "$ACTIVE"
-              fi
-              CURRENT_INFO=""
-            fi
-          done
+              return False, block
+
+          # --- PROSES UTAMA ---
+          try:
+              with open(INPUT_FILE, "r", encoding="utf-8") as f:
+                  lines = [line.strip() for line in f if line.strip()]
+          except FileNotFoundError:
+              print(f"Error: {INPUT_FILE} tidak ditemukan!")
+              exit(1)
+
+          blocks = []
+          current_block = []
+          
+          # Membaca file dan mengelompokkan blok channel (EXTINF + KODIPROP + URL)
+          for line in lines:
+              if line.startswith("#EXTINF"):
+                  current_block = [line]
+              elif line.startswith("#") and not line.startswith("#EXTM3U"):
+                  if current_block: current_block.append(line)
+              elif line.startswith("http"):
+                  if current_block:
+                      current_block.append(line)
+                      blocks.append(current_block)
+                      current_block = []
+
+          print(f"Memulai pengecekan {len(blocks)} channel secara paralel...")
+
+          active_blocks = []
+          # Multithreading dengan 20 pekerja. Map digunakan agar urutan channel m3u tidak acak.
+          with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+              results = executor.map(check_channel, blocks)
+              for is_active, blk in results:
+                  if is_active:
+                      active_blocks.append("\n".join(blk))
+
+          # Menulis file baru
+          with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+              f.write("#EXTM3U\n")
+              f.write("\n".join(active_blocks) + "\n")
+
+          print(f"Selesai! File {OUTPUT_FILE} telah diperbarui.")
+          EOF
+          
+          # Eksekusi file Python yang baru dibuat
+          python checker.py
 
       - name: Commit File Baru ke GitHub
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-sync: Membersihkan tv_endroo.m3u dari link mati"
+          commit_message: "Auto-sync: Membersihkan tv_endrooo.m3u dengan Python"
           file_pattern: 'tv_endrooo_aktif.m3u'
